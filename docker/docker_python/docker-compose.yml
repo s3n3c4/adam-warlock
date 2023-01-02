@@ -1,0 +1,8 @@
+version: '3.4'
+
+services:
+    app:
+        image: python3-botwonder 
+        privileged: true
+        restart: on-failure
+        

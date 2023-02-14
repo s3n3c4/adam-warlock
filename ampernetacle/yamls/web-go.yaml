@@ -28,7 +28,7 @@ spec:
     spec:
       containers:
       - name: web-go
-        image: allanbtz/golang-web:v2
+        image: allanbtz/golang-web:v5
         imagePullPolicy: Always
         ports:
         - containerPort: 8888

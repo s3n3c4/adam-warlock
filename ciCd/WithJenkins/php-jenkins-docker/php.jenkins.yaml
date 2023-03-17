@@ -1,0 +1,21 @@
+pipeline {
+    agent any
+    stages {
+        stage("Git checkout") {
+            steps {
+                git branch: "master", url: "https://github.com/laravel/framework.git"
+            }
+        }
+        stage("Composer install") {
+            steps {
+                sh "apt-get update && apt-get install -y php-gmp php-curl"
+                sh "composer install"
+            }
+        }
+        stage("PHPUnit") {
+            steps {
+                sh "vendor/bin/phpunit"
+            }
+        }
+    }
+}

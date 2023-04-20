@@ -1,0 +1,11 @@
+- name: Copiar arquivo para host remoto
+  hosts: cka-master
+  become: true
+  
+  tasks:
+    - name: Copiar arquivo
+      copy:
+        src: ./ansible-k8s.sh
+        dest: /tmp/
+    - name: Execute the script 
+      command: sh /tmp/ansible-k8s.sh

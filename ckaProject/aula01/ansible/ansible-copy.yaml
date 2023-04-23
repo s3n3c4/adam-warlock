@@ -1,7 +1,8 @@
 - name: Copiar arquivo para host remoto
   hosts: cka-master
   become: true
-  
+  vars:
+    ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
   tasks:
     - name: Copiar arquivo
       copy:

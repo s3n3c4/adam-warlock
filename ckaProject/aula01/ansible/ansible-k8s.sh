@@ -24,15 +24,16 @@ lsmod | grep overlay
 sysctl net.bridge.bridge-nf-call-iptables net.bridge.bridge-nf-call-ip6tables net.ipv4.ip_forward
 
 
-sudo apt-get update
+sudo apt update
 
-sudo apt-get install \
+sudo apt install \
     ca-certificates \
     curl \
     gnupg
 
 sudo install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg --force
+sudo rm -rf /etc/apt/keyrings/docker.gpg
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
 sudo chmod a+r /etc/apt/keyrings/docker.gpg
 
 echo \
@@ -40,7 +41,7 @@ echo \
   "$(. /etc/os-release && echo "$VERSION_CODENAME")" stable" | \
   sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 
-sudo apt-get update
+sudo apt update
 
 sudo apt install containerd.io
 
@@ -84,9 +85,28 @@ cat <<EOF | sudo tee /etc/containerd/config.toml
 #  gid = 0
 #  level = "info"
 
-plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
+[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
 SystemdCgroup = true
 EOF
+
+sudo apt update
+sudo apt install -y apt-transport-https ca-certificates curl
+sudo curl -fsSLo /etc/apt/keyrings/kubernetes-archive-keyring.gpg https://packages.cloud.google.com/apt/doc/apt-key.gpg
+
+echo "deb [signed-by=/etc/apt/keyrings/kubernetes-archive-keyring.gpg] https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee /etc/apt/sources.list.d/kubernetes.list
+
+sudo apt update
+
+if [ "$(cat /etc/hostname)" != "cka-master" ]; then
+  cat <<EOF | sudo tee /etc/hostname
+cka-master
+EOF
+sleep 10 && sudo shutdown -r now &
+else
+  echo "Nothing to do"
+fi
+
+rm -rf *
 
 
 

@@ -1,0 +1,12 @@
+- name: Copiar arquivo para host remoto
+  hosts: cka-node-1
+  become: true
+  vars:
+    ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+  tasks:
+    - name: Copiar arquivo
+      copy:
+        src: ./ansible-k8s.sh
+        dest: /tmp/
+    - name: Execute the script 
+      command: sh /tmp/ansible-k8s.sh

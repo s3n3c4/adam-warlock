@@ -20,6 +20,7 @@ resource "aws_instance" "cka-node-1" {
   }
 }
 
-output "public_ip" {
-  value = aws_instance.cka-node-1.public_ip
+resource "local_file" "output" {
+  content  = "[${aws_instance.cka-node-1.tags.Name}] \n${aws_instance.cka-node-1.public_ip} ansible_user=ubuntu"
+  filename = "../ansible/hosts"
 }

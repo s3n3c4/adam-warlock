@@ -33,3 +33,9 @@ resource "aws_instance" "cka-master" {
 output "public_ip" {
   value = aws_instance.cka-master.public_ip
 }
+
+resource "local_file" "output" {
+  content  = "[${aws_instance.cka-master.tags.Name}] \n${aws_instance.cka-master.public_ip} ansible_user=ubuntu"
+  filename = "../ansible/hosts"
+}
+

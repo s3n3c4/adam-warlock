@@ -89,6 +89,8 @@ cat <<EOF | sudo tee /etc/containerd/config.toml
 SystemdCgroup = true
 EOF
 
+systemctl restart containerd
+  
 sudo apt update
 sudo apt install -y apt-transport-https ca-certificates curl
 sudo curl -fsSLo /etc/apt/keyrings/kubernetes-archive-keyring.gpg https://packages.cloud.google.com/apt/doc/apt-key.gpg

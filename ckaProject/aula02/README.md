@@ -8,4 +8,6 @@
 
 - `sudo apt install kubeadm=1.27.0-00 kubelet=1.27.0-00 kubectl=1.27.0-00 -y`
 
-- `kubeadm init`
+- `sudo su -`
+
+- `executar comandos de join como root`

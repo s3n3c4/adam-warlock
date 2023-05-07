@@ -10,6 +10,19 @@ terraform {
   }
 }
 
+data "aws_security_group" "kubernetes" {
+  name = "kubernetes"
+}
+
+resource "aws_security_group_rule" "ssh_from_my_ip" {
+  type        = "ingress"
+  from_port   = 22
+  to_port     = 22
+  protocol    = "tcp"
+  cidr_blocks = ["0.0.0.0/0"]
+
+  security_group_id = data.aws_security_group.kubernetes.id
+}
 resource "aws_instance" "cka-node-1" {
   ami           = "ami-0b7af114fb404cd23"
   instance_type = "t3.small"

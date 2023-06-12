@@ -1,0 +1,1053 @@
+Metadata-Version: 2.1
+Name: aws-cdk.aws-cloudfront
+Version: 1.202.0
+Summary: The CDK Construct Library for AWS::CloudFront
+Home-page: https://github.com/aws/aws-cdk
+Author: Amazon Web Services
+License: Apache-2.0
+Project-URL: Source, https://github.com/aws/aws-cdk.git
+Platform: UNKNOWN
+Classifier: Intended Audience :: Developers
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: JavaScript
+Classifier: Programming Language :: Python :: 3 :: Only
+Classifier: Programming Language :: Python :: 3.7
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Typing :: Typed
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: License :: OSI Approved
+Classifier: Framework :: AWS CDK
+Classifier: Framework :: AWS CDK :: 1
+Requires-Python: ~=3.7
+Description-Content-Type: text/markdown
+License-File: LICENSE
+License-File: NOTICE
+Requires-Dist: aws-cdk.aws-certificatemanager (==1.202.0)
+Requires-Dist: aws-cdk.aws-cloudwatch (==1.202.0)
+Requires-Dist: aws-cdk.aws-ec2 (==1.202.0)
+Requires-Dist: aws-cdk.aws-iam (==1.202.0)
+Requires-Dist: aws-cdk.aws-kms (==1.202.0)
+Requires-Dist: aws-cdk.aws-lambda (==1.202.0)
+Requires-Dist: aws-cdk.aws-s3 (==1.202.0)
+Requires-Dist: aws-cdk.aws-ssm (==1.202.0)
+Requires-Dist: aws-cdk.core (==1.202.0)
+Requires-Dist: aws-cdk.cx-api (==1.202.0)
+Requires-Dist: constructs (<4.0.0,>=3.3.69)
+Requires-Dist: jsii (<2.0.0,>=1.74.0)
+Requires-Dist: publication (>=0.0.3)
+Requires-Dist: typeguard (~=2.13.3)
+
+# Amazon CloudFront Construct Library
+
+<!--BEGIN STABILITY BANNER-->---
+
+
+![cfn-resources: Stable](https://img.shields.io/badge/cfn--resources-stable-success.svg?style=for-the-badge)
+
+![cdk-constructs: Stable](https://img.shields.io/badge/cdk--constructs-stable-success.svg?style=for-the-badge)
+
+---
+<!--END STABILITY BANNER-->
+
+Amazon CloudFront is a web service that speeds up distribution of your static and dynamic web content, such as .html, .css, .js, and image files, to
+your users. CloudFront delivers your content through a worldwide network of data centers called edge locations. When a user requests content that
+you're serving with CloudFront, the user is routed to the edge location that provides the lowest latency, so that content is delivered with the best
+possible performance.
+
+## Distribution API
+
+The `Distribution` API is currently being built to replace the existing `CloudFrontWebDistribution` API. The `Distribution` API is optimized for the
+most common use cases of CloudFront distributions (e.g., single origin and behavior, few customizations) while still providing the ability for more
+advanced use cases. The API focuses on simplicity for the common use cases, and convenience methods for creating the behaviors and origins necessary
+for more complex use cases.
+
+### Creating a distribution
+
+CloudFront distributions deliver your content from one or more origins; an origin is the location where you store the original version of your
+content. Origins can be created from S3 buckets or a custom origin (HTTP server). Constructs to define origins are in the `@aws-cdk/aws-cloudfront-origins` module.
+
+Each distribution has a default behavior which applies to all requests to that distribution, and routes requests to a primary origin.
+Additional behaviors may be specified for an origin with a given URL path pattern. Behaviors allow routing with multiple origins,
+controlling which HTTP methods to support, whether to require users to use HTTPS, and what query strings or cookies to forward to your origin,
+among other settings.
+
+#### From an S3 Bucket
+
+An S3 bucket can be added as an origin. If the bucket is configured as a website endpoint, the distribution can use S3 redirects and S3 custom error
+documents.
+
+```python
+# Creates a distribution from an S3 bucket.
+my_bucket = s3.Bucket(self, "myBucket")
+cloudfront.Distribution(self, "myDist",
+    default_behavior=cloudfront.BehaviorOptions(origin=origins.S3Origin(my_bucket))
+)
+```
+
+The above will treat the bucket differently based on if `IBucket.isWebsite` is set or not. If the bucket is configured as a website, the bucket is
+treated as an HTTP origin, and the built-in S3 redirects and error pages can be used. Otherwise, the bucket is handled as a bucket origin and
+CloudFront's redirect and error handling will be used. In the latter case, the Origin will create an origin access identity and grant it access to the
+underlying bucket. This can be used in conjunction with a bucket that is not public to require that your users access your content using CloudFront
+URLs and not S3 URLs directly.
+
+#### ELBv2 Load Balancer
+
+An Elastic Load Balancing (ELB) v2 load balancer may be used as an origin. In order for a load balancer to serve as an origin, it must be publicly
+accessible (`internetFacing` is true). Both Application and Network load balancers are supported.
+
+```python
+# Creates a distribution from an ELBv2 load balancer
+# vpc: ec2.Vpc
+
+# Create an application load balancer in a VPC. 'internetFacing' must be 'true'
+# for CloudFront to access the load balancer and use it as an origin.
+lb = elbv2.ApplicationLoadBalancer(self, "LB",
+    vpc=vpc,
+    internet_facing=True
+)
+cloudfront.Distribution(self, "myDist",
+    default_behavior=cloudfront.BehaviorOptions(origin=origins.LoadBalancerV2Origin(lb))
+)
+```
+
+#### From an HTTP endpoint
+
+Origins can also be created from any other HTTP endpoint, given the domain name, and optionally, other origin properties.
+
+```python
+# Creates a distribution from an HTTP endpoint
+cloudfront.Distribution(self, "myDist",
+    default_behavior=cloudfront.BehaviorOptions(origin=origins.HttpOrigin("www.example.com"))
+)
+```
+
+### Domain Names and Certificates
+
+When you create a distribution, CloudFront assigns a domain name for the distribution, for example: `d111111abcdef8.cloudfront.net`; this value can
+be retrieved from `distribution.distributionDomainName`. CloudFront distributions use a default certificate (`*.cloudfront.net`) to support HTTPS by
+default. If you want to use your own domain name, such as `www.example.com`, you must associate a certificate with your distribution that contains
+your domain name, and provide one (or more) domain names from the certificate for the distribution.
+
+The certificate must be present in the AWS Certificate Manager (ACM) service in the US East (N. Virginia) region; the certificate
+may either be created by ACM, or created elsewhere and imported into ACM. When a certificate is used, the distribution will support HTTPS connections
+from SNI only and a minimum protocol version of TLSv1.2_2021 if the `@aws-cdk/aws-cloudfront:defaultSecurityPolicyTLSv1.2_2021` feature flag is set, and TLSv1.2_2019 otherwise.
+
+```python
+# To use your own domain name in a Distribution, you must associate a certificate
+import aws_cdk.aws_certificatemanager as acm
+import aws_cdk.aws_route53 as route53
+
+# hosted_zone: route53.HostedZone
+
+# my_bucket: s3.Bucket
+
+my_certificate = acm.DnsValidatedCertificate(self, "mySiteCert",
+    domain_name="www.example.com",
+    hosted_zone=hosted_zone
+)
+cloudfront.Distribution(self, "myDist",
+    default_behavior=cloudfront.BehaviorOptions(origin=origins.S3Origin(my_bucket)),
+    domain_names=["www.example.com"],
+    certificate=my_certificate
+)
+```
+
+However, you can customize the minimum protocol version for the certificate while creating the distribution using `minimumProtocolVersion` property.
+
+```python
+# Create a Distribution with a custom domain name and a minimum protocol version.
+# my_bucket: s3.Bucket
+
+cloudfront.Distribution(self, "myDist",
+    default_behavior=cloudfront.BehaviorOptions(origin=origins.S3Origin(my_bucket)),
+    domain_names=["www.example.com"],
+    minimum_protocol_version=cloudfront.SecurityPolicyProtocol.TLS_V1_2016,
+    ssl_support_method=cloudfront.SSLMethod.SNI
+)
+```
+
+### Multiple Behaviors & Origins
+
+Each distribution has a default behavior which applies to all requests to that distribution; additional behaviors may be specified for a
+given URL path pattern. Behaviors allow routing with multiple origins, controlling which HTTP methods to support, whether to require users to
+use HTTPS, and what query strings or cookies to forward to your origin, among others.
+
+The properties of the default behavior can be adjusted as part of the distribution creation. The following example shows configuring the HTTP
+methods and viewer protocol policy of the cache.
+
+```python
+# Create a Distribution with configured HTTP methods and viewer protocol policy of the cache.
+# my_bucket: s3.Bucket
+
+my_web_distribution = cloudfront.Distribution(self, "myDist",
+    default_behavior=cloudfront.BehaviorOptions(
+        origin=origins.S3Origin(my_bucket),
+        allowed_methods=cloudfront.AllowedMethods.ALLOW_ALL,
+        viewer_protocol_policy=cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS
+    )
+)
+```
+
+Additional behaviors can be specified at creation, or added after the initial creation. Each additional behavior is associated with an origin,
+and enable customization for a specific set of resources based on a URL path pattern. For example, we can add a behavior to `myWebDistribution` to
+override the default viewer protocol policy for all of the images.
+
+```python
+# Add a behavior to a Distribution after initial creation.
+# my_bucket: s3.Bucket
+# my_web_distribution: cloudfront.Distribution
+
+my_web_distribution.add_behavior("/images/*.jpg", origins.S3Origin(my_bucket),
+    viewer_protocol_policy=cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS
+)
+```
+
+These behaviors can also be specified at distribution creation time.
+
+```python
+# Create a Distribution with additional behaviors at creation time.
+# my_bucket: s3.Bucket
+
+bucket_origin = origins.S3Origin(my_bucket)
+cloudfront.Distribution(self, "myDist",
+    default_behavior=cloudfront.BehaviorOptions(
+        origin=bucket_origin,
+        allowed_methods=cloudfront.AllowedMethods.ALLOW_ALL,
+        viewer_protocol_policy=cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS
+    ),
+    additional_behaviors={
+        "/images/*.jpg": cloudfront.BehaviorOptions(
+            origin=bucket_origin,
+            viewer_protocol_policy=cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS
+        )
+    }
+)
+```
+
+### Customizing Cache Keys and TTLs with Cache Policies
+
+You can use a cache policy to improve your cache hit ratio by controlling the values (URL query strings, HTTP headers, and cookies)
+that are included in the cache key, and/or adjusting how long items remain in the cache via the time-to-live (TTL) settings.
+CloudFront provides some predefined cache policies, known as managed policies, for common use cases. You can use these managed policies,
+or you can create your own cache policy that’s specific to your needs.
+See https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/controlling-the-cache-key.html for more details.
+
+```python
+# Using an existing cache policy for a Distribution
+# bucket_origin: origins.S3Origin
+
+cloudfront.Distribution(self, "myDistManagedPolicy",
+    default_behavior=cloudfront.BehaviorOptions(
+        origin=bucket_origin,
+        cache_policy=cloudfront.CachePolicy.CACHING_OPTIMIZED
+    )
+)
+```
+
+```python
+# Creating a custom cache policy for a Distribution -- all parameters optional
+# bucket_origin: origins.S3Origin
+
+my_cache_policy = cloudfront.CachePolicy(self, "myCachePolicy",
+    cache_policy_name="MyPolicy",
+    comment="A default policy",
+    default_ttl=Duration.days(2),
+    min_ttl=Duration.minutes(1),
+    max_ttl=Duration.days(10),
+    cookie_behavior=cloudfront.CacheCookieBehavior.all(),
+    header_behavior=cloudfront.CacheHeaderBehavior.allow_list("X-CustomHeader"),
+    query_string_behavior=cloudfront.CacheQueryStringBehavior.deny_list("username"),
+    enable_accept_encoding_gzip=True,
+    enable_accept_encoding_brotli=True
+)
+cloudfront.Distribution(self, "myDistCustomPolicy",
+    default_behavior=cloudfront.BehaviorOptions(
+        origin=bucket_origin,
+        cache_policy=my_cache_policy
+    )
+)
+```
+
+### Customizing Origin Requests with Origin Request Policies
+
+When CloudFront makes a request to an origin, the URL path, request body (if present), and a few standard headers are included.
+Other information from the viewer request, such as URL query strings, HTTP headers, and cookies, is not included in the origin request by default.
+You can use an origin request policy to control the information that’s included in an origin request.
+CloudFront provides some predefined origin request policies, known as managed policies, for common use cases. You can use these managed policies,
+or you can create your own origin request policy that’s specific to your needs.
+See https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/controlling-origin-requests.html for more details.
+
+```python
+# Using an existing origin request policy for a Distribution
+# bucket_origin: origins.S3Origin
+
+cloudfront.Distribution(self, "myDistManagedPolicy",
+    default_behavior=cloudfront.BehaviorOptions(
+        origin=bucket_origin,
+        origin_request_policy=cloudfront.OriginRequestPolicy.CORS_S3_ORIGIN
+    )
+)
+```
+
+```python
+# Creating a custom origin request policy for a Distribution -- all parameters optional
+# bucket_origin: origins.S3Origin
+
+my_origin_request_policy = cloudfront.OriginRequestPolicy(self, "OriginRequestPolicy",
+    origin_request_policy_name="MyPolicy",
+    comment="A default policy",
+    cookie_behavior=cloudfront.OriginRequestCookieBehavior.none(),
+    header_behavior=cloudfront.OriginRequestHeaderBehavior.all("CloudFront-Is-Android-Viewer"),
+    query_string_behavior=cloudfront.OriginRequestQueryStringBehavior.allow_list("username")
+)
+
+cloudfront.Distribution(self, "myDistCustomPolicy",
+    default_behavior=cloudfront.BehaviorOptions(
+        origin=bucket_origin,
+        origin_request_policy=my_origin_request_policy
+    )
+)
+```
+
+### Customizing Response Headers with Response Headers Policies
+
+You can configure CloudFront to add one or more HTTP headers to the responses that it sends to viewers (web browsers or other clients), without making any changes to the origin or writing any code.
+To specify the headers that CloudFront adds to HTTP responses, you use a response headers policy. CloudFront adds the headers regardless of whether it serves the object from the cache or has to retrieve the object from the origin. If the origin response includes one or more of the headers that’s in a response headers policy, the policy can specify whether CloudFront uses the header it received from the origin or overwrites it with the one in the policy.
+See https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/adding-response-headers.html
+
+```python
+# Using an existing managed response headers policy
+# bucket_origin: origins.S3Origin
+
+cloudfront.Distribution(self, "myDistManagedPolicy",
+    default_behavior=cloudfront.BehaviorOptions(
+        origin=bucket_origin,
+        response_headers_policy=cloudfront.ResponseHeadersPolicy.CORS_ALLOW_ALL_ORIGINS
+    )
+)
+
+# Creating a custom response headers policy -- all parameters optional
+my_response_headers_policy = cloudfront.ResponseHeadersPolicy(self, "ResponseHeadersPolicy",
+    response_headers_policy_name="MyPolicy",
+    comment="A default policy",
+    cors_behavior=cloudfront.ResponseHeadersCorsBehavior(
+        access_control_allow_credentials=False,
+        access_control_allow_headers=["X-Custom-Header-1", "X-Custom-Header-2"],
+        access_control_allow_methods=["GET", "POST"],
+        access_control_allow_origins=["*"],
+        access_control_expose_headers=["X-Custom-Header-1", "X-Custom-Header-2"],
+        access_control_max_age=Duration.seconds(600),
+        origin_override=True
+    ),
+    custom_headers_behavior=cloudfront.ResponseCustomHeadersBehavior(
+        custom_headers=[cloudfront.ResponseCustomHeader(header="X-Amz-Date", value="some-value", override=True), cloudfront.ResponseCustomHeader(header="X-Amz-Security-Token", value="some-value", override=False)
+        ]
+    ),
+    security_headers_behavior=cloudfront.ResponseSecurityHeadersBehavior(
+        content_security_policy=cloudfront.ResponseHeadersContentSecurityPolicy(content_security_policy="default-src https:;", override=True),
+        content_type_options=cloudfront.ResponseHeadersContentTypeOptions(override=True),
+        frame_options=cloudfront.ResponseHeadersFrameOptions(frame_option=cloudfront.HeadersFrameOption.DENY, override=True),
+        referrer_policy=cloudfront.ResponseHeadersReferrerPolicy(referrer_policy=cloudfront.HeadersReferrerPolicy.NO_REFERRER, override=True),
+        strict_transport_security=cloudfront.ResponseHeadersStrictTransportSecurity(access_control_max_age=Duration.seconds(600), include_subdomains=True, override=True),
+        xss_protection=cloudfront.ResponseHeadersXSSProtection(protection=True, mode_block=True, report_uri="https://example.com/csp-report", override=True)
+    )
+)
+cloudfront.Distribution(self, "myDistCustomPolicy",
+    default_behavior=cloudfront.BehaviorOptions(
+        origin=bucket_origin,
+        response_headers_policy=my_response_headers_policy
+    )
+)
+```
+
+### Validating signed URLs or signed cookies with Trusted Key Groups
+
+CloudFront Distribution supports validating signed URLs or signed cookies using key groups.
+When a cache behavior contains trusted key groups, CloudFront requires signed URLs or signed
+cookies for all requests that match the cache behavior.
+
+```python
+# Validating signed URLs or signed cookies with Trusted Key Groups
+
+# public key in PEM format
+# public_key: str
+
+pub_key = cloudfront.PublicKey(self, "MyPubKey",
+    encoded_key=public_key
+)
+
+key_group = cloudfront.KeyGroup(self, "MyKeyGroup",
+    items=[pub_key
+    ]
+)
+
+cloudfront.Distribution(self, "Dist",
+    default_behavior=cloudfront.BehaviorOptions(
+        origin=origins.HttpOrigin("www.example.com"),
+        trusted_key_groups=[key_group
+        ]
+    )
+)
+```
+
+### Lambda@Edge
+
+Lambda@Edge is an extension of AWS Lambda, a compute service that lets you execute
+functions that customize the content that CloudFront delivers. You can author Node.js
+or Python functions in the US East (N. Virginia) region, and then execute them in AWS
+locations globally that are closer to the viewer, without provisioning or managing servers.
+Lambda@Edge functions are associated with a specific behavior and event type. Lambda@Edge
+can be used to rewrite URLs, alter responses based on headers or cookies, or authorize
+requests based on headers or authorization tokens.
+
+The following shows a Lambda@Edge function added to the default behavior and triggered
+on every request:
+
+```python
+# my_bucket: s3.Bucket
+# A Lambda@Edge function added to default behavior of a Distribution
+# and triggered on every request
+my_func = cloudfront.experimental.EdgeFunction(self, "MyFunction",
+    runtime=lambda_.Runtime.NODEJS_14_X,
+    handler="index.handler",
+    code=lambda_.Code.from_asset(path.join(__dirname, "lambda-handler"))
+)
+cloudfront.Distribution(self, "myDist",
+    default_behavior=cloudfront.BehaviorOptions(
+        origin=origins.S3Origin(my_bucket),
+        edge_lambdas=[cloudfront.EdgeLambda(
+            function_version=my_func.current_version,
+            event_type=cloudfront.LambdaEdgeEventType.VIEWER_REQUEST
+        )
+        ]
+    )
+)
+```
+
+> **Note:** Lambda@Edge functions must be created in the `us-east-1` region, regardless of the region of the CloudFront distribution and stack.
+> To make it easier to request functions for Lambda@Edge, the `EdgeFunction` construct can be used.
+> The `EdgeFunction` construct will automatically request a function in `us-east-1`, regardless of the region of the current stack.
+> `EdgeFunction` has the same interface as `Function` and can be created and used interchangeably.
+> Please note that using `EdgeFunction` requires that the `us-east-1` region has been bootstrapped.
+> See https://docs.aws.amazon.com/cdk/latest/guide/bootstrapping.html for more about bootstrapping regions.
+
+If the stack is in `us-east-1`, a "normal" `lambda.Function` can be used instead of an `EdgeFunction`.
+
+```python
+# Using a lambda Function instead of an EdgeFunction for stacks in `us-east-`.
+my_func = lambda_.Function(self, "MyFunction",
+    runtime=lambda_.Runtime.NODEJS_14_X,
+    handler="index.handler",
+    code=lambda_.Code.from_asset(path.join(__dirname, "lambda-handler"))
+)
+```
+
+If the stack is not in `us-east-1`, and you need references from different applications on the same account,
+you can also set a specific stack ID for each Lambda@Edge.
+
+```python
+# Setting stackIds for EdgeFunctions that can be referenced from different applications
+# on the same account.
+my_func1 = cloudfront.experimental.EdgeFunction(self, "MyFunction1",
+    runtime=lambda_.Runtime.NODEJS_14_X,
+    handler="index.handler",
+    code=lambda_.Code.from_asset(path.join(__dirname, "lambda-handler1")),
+    stack_id="edge-lambda-stack-id-1"
+)
+
+my_func2 = cloudfront.experimental.EdgeFunction(self, "MyFunction2",
+    runtime=lambda_.Runtime.NODEJS_14_X,
+    handler="index.handler",
+    code=lambda_.Code.from_asset(path.join(__dirname, "lambda-handler2")),
+    stack_id="edge-lambda-stack-id-2"
+)
+```
+
+Lambda@Edge functions can also be associated with additional behaviors,
+either at or after Distribution creation time.
+
+```python
+# Associating a Lambda@Edge function with additional behaviors.
+
+# my_func: cloudfront.experimental.EdgeFunction
+# assigning at Distribution creation
+# my_bucket: s3.Bucket
+
+my_origin = origins.S3Origin(my_bucket)
+my_distribution = cloudfront.Distribution(self, "myDist",
+    default_behavior=cloudfront.BehaviorOptions(origin=my_origin),
+    additional_behaviors={
+        "images/*": cloudfront.BehaviorOptions(
+            origin=my_origin,
+            edge_lambdas=[cloudfront.EdgeLambda(
+                function_version=my_func.current_version,
+                event_type=cloudfront.LambdaEdgeEventType.ORIGIN_REQUEST,
+                include_body=True
+            )
+            ]
+        )
+    }
+)
+
+# assigning after creation
+my_distribution.add_behavior("images/*", my_origin,
+    edge_lambdas=[cloudfront.EdgeLambda(
+        function_version=my_func.current_version,
+        event_type=cloudfront.LambdaEdgeEventType.VIEWER_RESPONSE
+    )
+    ]
+)
+```
+
+Adding an existing Lambda@Edge function created in a different stack to a CloudFront distribution.
+
+```python
+# Adding an existing Lambda@Edge function created in a different stack
+# to a CloudFront distribution.
+# s3_bucket: s3.Bucket
+
+function_version = lambda_.Version.from_version_arn(self, "Version", "arn:aws:lambda:us-east-1:123456789012:function:functionName:1")
+
+cloudfront.Distribution(self, "distro",
+    default_behavior=cloudfront.BehaviorOptions(
+        origin=origins.S3Origin(s3_bucket),
+        edge_lambdas=[cloudfront.EdgeLambda(
+            function_version=function_version,
+            event_type=cloudfront.LambdaEdgeEventType.VIEWER_REQUEST
+        )
+        ]
+    )
+)
+```
+
+### CloudFront Function
+
+You can also deploy CloudFront functions and add them to a CloudFront distribution.
+
+```python
+# s3_bucket: s3.Bucket
+# Add a cloudfront Function to a Distribution
+cf_function = cloudfront.Function(self, "Function",
+    code=cloudfront.FunctionCode.from_inline("function handler(event) { return event.request }")
+)
+cloudfront.Distribution(self, "distro",
+    default_behavior=cloudfront.BehaviorOptions(
+        origin=origins.S3Origin(s3_bucket),
+        function_associations=[cloudfront.FunctionAssociation(
+            function=cf_function,
+            event_type=cloudfront.FunctionEventType.VIEWER_REQUEST
+        )]
+    )
+)
+```
+
+It will auto-generate the name of the function and deploy it to the `live` stage.
+
+Additionally, you can load the function's code from a file using the `FunctionCode.fromFile()` method.
+
+### Logging
+
+You can configure CloudFront to create log files that contain detailed information about every user request that CloudFront receives.
+The logs can go to either an existing bucket, or a bucket will be created for you.
+
+```python
+# Configure logging for Distributions
+
+# Simplest form - creates a new bucket and logs to it.
+cloudfront.Distribution(self, "myDist",
+    default_behavior=cloudfront.BehaviorOptions(origin=origins.HttpOrigin("www.example.com")),
+    enable_logging=True
+)
+
+# You can optionally log to a specific bucket, configure whether cookies are logged, and give the log files a prefix.
+cloudfront.Distribution(self, "myDist",
+    default_behavior=cloudfront.BehaviorOptions(origin=origins.HttpOrigin("www.example.com")),
+    enable_logging=True,  # Optional, this is implied if logBucket is specified
+    log_bucket=s3.Bucket(self, "LogBucket"),
+    log_file_prefix="distribution-access-logs/",
+    log_includes_cookies=True
+)
+```
+
+### Importing Distributions
+
+Existing distributions can be imported as well; note that like most imported constructs, an imported distribution cannot be modified.
+However, it can be used as a reference for other higher-level constructs.
+
+```python
+# Using a reference to an imported Distribution
+distribution = cloudfront.Distribution.from_distribution_attributes(self, "ImportedDist",
+    domain_name="d111111abcdef8.cloudfront.net",
+    distribution_id="012345ABCDEF"
+)
+```
+
+## Migrating from the original CloudFrontWebDistribution to the newer Distribution construct
+
+It's possible to migrate a distribution from the original to the modern API.
+The changes necessary are the following:
+
+### The Distribution
+
+Replace `new CloudFrontWebDistribution` with `new Distribution`. Some
+configuration properties have been changed:
+
+| Old API                        | New API                                                                                        |
+|--------------------------------|------------------------------------------------------------------------------------------------|
+| `originConfigs`                | `defaultBehavior`; use `additionalBehaviors` if necessary                                      |
+| `viewerCertificate`            | `certificate`; use `domainNames` for aliases                                                   |
+| `errorConfigurations`          | `errorResponses`                                                                               |
+| `loggingConfig`                | `enableLogging`; configure with `logBucket` `logFilePrefix` and `logIncludesCookies`           |
+| `viewerProtocolPolicy`         | removed; set on each behavior instead. default changed from `REDIRECT_TO_HTTPS` to `ALLOW_ALL` |
+
+After switching constructs, you need to maintain the same logical ID for the underlying [CfnDistribution](https://docs.aws.amazon.com/cdk/api/v1/docs/@aws-cdk_aws-cloudfront.CfnDistribution.html) if you wish to avoid the deletion and recreation of your distribution.
+To do this, use [escape hatches](https://docs.aws.amazon.com/cdk/v2/guide/cfn_layer.html) to override the logical ID created by the new Distribution construct with the logical ID created by the old construct.
+
+Example:
+
+```python
+# source_bucket: s3.Bucket
+
+
+my_distribution = cloudfront.Distribution(self, "MyCfWebDistribution",
+    default_behavior=cloudfront.BehaviorOptions(
+        origin=origins.S3Origin(source_bucket)
+    )
+)
+cfn_distribution = my_distribution.node.default_child
+cfn_distribution.override_logical_id("MyDistributionCFDistribution3H55TI9Q")
+```
+
+### Behaviors
+
+The modern API makes use of the [CloudFront Origins](https://docs.aws.amazon.com/cdk/api/v2/docs/aws-cdk-lib.aws_cloudfront_origins-readme.html) module to easily configure your origin. Replace your origin configuration with the relevant CloudFront Origins class. For example, here's a behavior with an S3 origin:
+
+```python
+# source_bucket: s3.Bucket
+# oai: cloudfront.OriginAccessIdentity
+
+
+cloudfront.CloudFrontWebDistribution(self, "MyCfWebDistribution",
+    origin_configs=[cloudfront.SourceConfiguration(
+        s3_origin_source=cloudfront.S3OriginConfig(
+            s3_bucket_source=source_bucket,
+            origin_access_identity=oai
+        ),
+        behaviors=[cloudfront.Behavior(is_default_behavior=True)]
+    )
+    ]
+)
+```
+
+Becomes:
+
+```python
+# source_bucket: s3.Bucket
+
+
+distribution = cloudfront.Distribution(self, "MyCfWebDistribution",
+    default_behavior=cloudfront.BehaviorOptions(
+        origin=origins.S3Origin(source_bucket)
+    )
+)
+```
+
+In the original API all behaviors are defined in the `originConfigs` property. The new API is optimized for a single origin and behavior, so the default behavior and additional behaviors will be defined separately.
+
+```python
+# source_bucket: s3.Bucket
+# oai: cloudfront.OriginAccessIdentity
+
+
+cloudfront.CloudFrontWebDistribution(self, "MyCfWebDistribution",
+    origin_configs=[cloudfront.SourceConfiguration(
+        s3_origin_source=cloudfront.S3OriginConfig(
+            s3_bucket_source=source_bucket,
+            origin_access_identity=oai
+        ),
+        behaviors=[cloudfront.Behavior(is_default_behavior=True)]
+    ), cloudfront.SourceConfiguration(
+        custom_origin_source=cloudfront.CustomOriginConfig(
+            domain_name="MYALIAS"
+        ),
+        behaviors=[cloudfront.Behavior(path_pattern="/somewhere")]
+    )
+    ]
+)
+```
+
+Becomes:
+
+```python
+# source_bucket: s3.Bucket
+
+
+distribution = cloudfront.Distribution(self, "MyCfWebDistribution",
+    default_behavior=cloudfront.BehaviorOptions(
+        origin=origins.S3Origin(source_bucket)
+    ),
+    additional_behaviors={
+        "/somewhere": cloudfront.BehaviorOptions(
+            origin=origins.HttpOrigin("MYALIAS")
+        )
+    }
+)
+```
+
+### Certificates
+
+If you are using an ACM certificate, you can pass the certificate directly to the `certificate` prop.
+Any aliases used before in the `ViewerCertificate` class should be passed in to the `domainNames` prop in the modern API.
+
+```python
+import aws_cdk.aws_certificatemanager as acm
+# certificate: acm.Certificate
+# source_bucket: s3.Bucket
+
+
+viewer_certificate = cloudfront.ViewerCertificate.from_acm_certificate(certificate,
+    aliases=["MYALIAS"]
+)
+
+cloudfront.CloudFrontWebDistribution(self, "MyCfWebDistribution",
+    origin_configs=[cloudfront.SourceConfiguration(
+        s3_origin_source=cloudfront.S3OriginConfig(
+            s3_bucket_source=source_bucket
+        ),
+        behaviors=[cloudfront.Behavior(is_default_behavior=True)]
+    )
+    ],
+    viewer_certificate=viewer_certificate
+)
+```
+
+Becomes:
+
+```python
+import aws_cdk.aws_certificatemanager as acm
+# certificate: acm.Certificate
+# source_bucket: s3.Bucket
+
+
+distribution = cloudfront.Distribution(self, "MyCfWebDistribution",
+    default_behavior=cloudfront.BehaviorOptions(
+        origin=origins.S3Origin(source_bucket)
+    ),
+    domain_names=["MYALIAS"],
+    certificate=certificate
+)
+```
+
+IAM certificates aren't directly supported by the new API, but can be easily configured through [escape hatches](https://docs.aws.amazon.com/cdk/v2/guide/cfn_layer.html)
+
+```python
+# source_bucket: s3.Bucket
+
+viewer_certificate = cloudfront.ViewerCertificate.from_iam_certificate("MYIAMROLEIDENTIFIER",
+    aliases=["MYALIAS"]
+)
+
+cloudfront.CloudFrontWebDistribution(self, "MyCfWebDistribution",
+    origin_configs=[cloudfront.SourceConfiguration(
+        s3_origin_source=cloudfront.S3OriginConfig(
+            s3_bucket_source=source_bucket
+        ),
+        behaviors=[cloudfront.Behavior(is_default_behavior=True)]
+    )
+    ],
+    viewer_certificate=viewer_certificate
+)
+```
+
+Becomes:
+
+```python
+# source_bucket: s3.Bucket
+
+distribution = cloudfront.Distribution(self, "MyCfWebDistribution",
+    default_behavior=cloudfront.BehaviorOptions(
+        origin=origins.S3Origin(source_bucket)
+    ),
+    domain_names=["MYALIAS"]
+)
+
+cfn_distribution = distribution.node.default_child
+
+cfn_distribution.add_property_override("ViewerCertificate.IamCertificateId", "MYIAMROLEIDENTIFIER")
+cfn_distribution.add_property_override("ViewerCertificate.SslSupportMethod", "sni-only")
+```
+
+### Other changes
+
+A number of default settings have changed on the new API when creating a new distribution, behavior, and origin.
+After making the major changes needed for the migration, run `cdk diff` to see what settings have changed.
+If no changes are desired during migration, you will at the least be able to use [escape hatches](https://docs.aws.amazon.com/cdk/v2/guide/cfn_layer.html) to override what the CDK synthesizes, if you can't change the properties directly.
+
+## CloudFrontWebDistribution API
+
+> The `CloudFrontWebDistribution` construct is the original construct written for working with CloudFront distributions.
+> Users are encouraged to use the newer `Distribution` instead, as it has a simpler interface and receives new features faster.
+
+Example usage:
+
+```python
+# Using a CloudFrontWebDistribution construct.
+
+# source_bucket: s3.Bucket
+
+distribution = cloudfront.CloudFrontWebDistribution(self, "MyDistribution",
+    origin_configs=[cloudfront.SourceConfiguration(
+        s3_origin_source=cloudfront.S3OriginConfig(
+            s3_bucket_source=source_bucket
+        ),
+        behaviors=[cloudfront.Behavior(is_default_behavior=True)]
+    )
+    ]
+)
+```
+
+### Viewer certificate
+
+By default, CloudFront Web Distributions will answer HTTPS requests with CloudFront's default certificate,
+only containing the distribution `domainName` (e.g. d111111abcdef8.cloudfront.net).
+You can customize the viewer certificate property to provide a custom certificate and/or list of domain name aliases to fit your needs.
+
+See [Using Alternate Domain Names and HTTPS](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/using-https-alternate-domain-names.html) in the CloudFront User Guide.
+
+#### Default certificate
+
+You can customize the default certificate aliases. This is intended to be used in combination with CNAME records in your DNS zone.
+
+Example:
+
+```python
+s3_bucket_source = s3.Bucket(self, "Bucket")
+
+distribution = cloudfront.CloudFrontWebDistribution(self, "AnAmazingWebsiteProbably",
+    origin_configs=[cloudfront.SourceConfiguration(
+        s3_origin_source=cloudfront.S3OriginConfig(s3_bucket_source=s3_bucket_source),
+        behaviors=[cloudfront.Behavior(is_default_behavior=True)]
+    )],
+    viewer_certificate=cloudfront.ViewerCertificate.from_cloud_front_default_certificate("www.example.com")
+)
+```
+
+#### ACM certificate
+
+You can change the default certificate by one stored AWS Certificate Manager, or ACM.
+Those certificate can either be generated by AWS, or purchased by another CA imported into ACM.
+
+For more information, see
+[the aws-certificatemanager module documentation](https://docs.aws.amazon.com/cdk/api/latest/docs/aws-certificatemanager-readme.html)
+or [Importing Certificates into AWS Certificate Manager](https://docs.aws.amazon.com/acm/latest/userguide/import-certificate.html)
+in the AWS Certificate Manager User Guide.
+
+Example:
+
+```python
+s3_bucket_source = s3.Bucket(self, "Bucket")
+
+certificate = certificatemanager.Certificate(self, "Certificate",
+    domain_name="example.com",
+    subject_alternative_names=["*.example.com"]
+)
+
+distribution = cloudfront.CloudFrontWebDistribution(self, "AnAmazingWebsiteProbably",
+    origin_configs=[cloudfront.SourceConfiguration(
+        s3_origin_source=cloudfront.S3OriginConfig(s3_bucket_source=s3_bucket_source),
+        behaviors=[cloudfront.Behavior(is_default_behavior=True)]
+    )],
+    viewer_certificate=cloudfront.ViewerCertificate.from_acm_certificate(certificate,
+        aliases=["example.com", "www.example.com"],
+        security_policy=cloudfront.SecurityPolicyProtocol.TLS_V1,  # default
+        ssl_method=cloudfront.SSLMethod.SNI
+    )
+)
+```
+
+#### IAM certificate
+
+You can also import a certificate into the IAM certificate store.
+
+See [Importing an SSL/TLS Certificate](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/cnames-and-https-procedures.html#cnames-and-https-uploading-certificates) in the CloudFront User Guide.
+
+Example:
+
+```python
+s3_bucket_source = s3.Bucket(self, "Bucket")
+
+distribution = cloudfront.CloudFrontWebDistribution(self, "AnAmazingWebsiteProbably",
+    origin_configs=[cloudfront.SourceConfiguration(
+        s3_origin_source=cloudfront.S3OriginConfig(s3_bucket_source=s3_bucket_source),
+        behaviors=[cloudfront.Behavior(is_default_behavior=True)]
+    )],
+    viewer_certificate=cloudfront.ViewerCertificate.from_iam_certificate("certificateId",
+        aliases=["example.com"],
+        security_policy=cloudfront.SecurityPolicyProtocol.SSL_V3,  # default
+        ssl_method=cloudfront.SSLMethod.SNI
+    )
+)
+```
+
+### Trusted Key Groups
+
+CloudFront Web Distributions supports validating signed URLs or signed cookies using key groups.
+When a cache behavior contains trusted key groups, CloudFront requires signed URLs or signed cookies for all requests that match the cache behavior.
+
+Example:
+
+```python
+# Using trusted key groups for Cloudfront Web Distributions.
+# source_bucket: s3.Bucket
+# public_key: str
+
+pub_key = cloudfront.PublicKey(self, "MyPubKey",
+    encoded_key=public_key
+)
+
+key_group = cloudfront.KeyGroup(self, "MyKeyGroup",
+    items=[pub_key
+    ]
+)
+
+cloudfront.CloudFrontWebDistribution(self, "AnAmazingWebsiteProbably",
+    origin_configs=[cloudfront.SourceConfiguration(
+        s3_origin_source=cloudfront.S3OriginConfig(
+            s3_bucket_source=source_bucket
+        ),
+        behaviors=[cloudfront.Behavior(
+            is_default_behavior=True,
+            trusted_key_groups=[key_group
+            ]
+        )
+        ]
+    )
+    ]
+)
+```
+
+### Restrictions
+
+CloudFront supports adding restrictions to your distribution.
+
+See [Restricting the Geographic Distribution of Your Content](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/georestrictions.html) in the CloudFront User Guide.
+
+Example:
+
+```python
+# Adding restrictions to a Cloudfront Web Distribution.
+# source_bucket: s3.Bucket
+
+cloudfront.CloudFrontWebDistribution(self, "MyDistribution",
+    origin_configs=[cloudfront.SourceConfiguration(
+        s3_origin_source=cloudfront.S3OriginConfig(
+            s3_bucket_source=source_bucket
+        ),
+        behaviors=[cloudfront.Behavior(is_default_behavior=True)]
+    )
+    ],
+    geo_restriction=cloudfront.GeoRestriction.allowlist("US", "GB")
+)
+```
+
+### Connection behaviors between CloudFront and your origin
+
+CloudFront provides you even more control over the connection behaviors between CloudFront and your origin.
+You can now configure the number of connection attempts CloudFront will make to your origin and the origin connection timeout for each attempt.
+
+See [Origin Connection Attempts](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/distribution-web-values-specify.html#origin-connection-attempts)
+
+See [Origin Connection Timeout](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/distribution-web-values-specify.html#origin-connection-timeout)
+
+Example usage:
+
+```python
+# Configuring connection behaviors between Cloudfront and your origin
+distribution = cloudfront.CloudFrontWebDistribution(self, "MyDistribution",
+    origin_configs=[cloudfront.SourceConfiguration(
+        connection_attempts=3,
+        connection_timeout=Duration.seconds(10),
+        behaviors=[cloudfront.Behavior(
+            is_default_behavior=True
+        )
+        ]
+    )
+    ]
+)
+```
+
+#### Origin Fallback
+
+In case the origin source is not available and answers with one of the
+specified status codes the failover origin source will be used.
+
+```python
+# Configuring origin fallback options for the CloudFrontWebDistribution
+cloudfront.CloudFrontWebDistribution(self, "ADistribution",
+    origin_configs=[cloudfront.SourceConfiguration(
+        s3_origin_source=cloudfront.S3OriginConfig(
+            s3_bucket_source=s3.Bucket.from_bucket_name(self, "aBucket", "myoriginbucket"),
+            origin_path="/",
+            origin_headers={
+                "myHeader": "42"
+            },
+            origin_shield_region="us-west-2"
+        ),
+        failover_s3_origin_source=cloudfront.S3OriginConfig(
+            s3_bucket_source=s3.Bucket.from_bucket_name(self, "aBucketFallback", "myoriginbucketfallback"),
+            origin_path="/somewhere",
+            origin_headers={
+                "myHeader2": "21"
+            },
+            origin_shield_region="us-east-1"
+        ),
+        failover_criteria_status_codes=[cloudfront.FailoverStatusCode.INTERNAL_SERVER_ERROR],
+        behaviors=[cloudfront.Behavior(
+            is_default_behavior=True
+        )
+        ]
+    )
+    ]
+)
+```
+
+## KeyGroup & PublicKey API
+
+You can create a key group to use with CloudFront signed URLs and signed cookies
+You can add public keys to use with CloudFront features such as signed URLs, signed cookies, and field-level encryption.
+
+The following example command uses OpenSSL to generate an RSA key pair with a length of 2048 bits and save to the file named `private_key.pem`.
+
+```bash
+openssl genrsa -out private_key.pem 2048
+```
+
+The resulting file contains both the public and the private key. The following example command extracts the public key from the file named `private_key.pem` and stores it in `public_key.pem`.
+
+```bash
+openssl rsa -pubout -in private_key.pem -out public_key.pem
+```
+
+Note: Don't forget to copy/paste the contents of `public_key.pem` file including `-----BEGIN PUBLIC KEY-----` and `-----END PUBLIC KEY-----` lines into `encodedKey` parameter when creating a `PublicKey`.
+
+Example:
+
+```python
+# Create a key group to use with CloudFront signed URLs and signed cookies.
+cloudfront.KeyGroup(self, "MyKeyGroup",
+    items=[
+        cloudfront.PublicKey(self, "MyPublicKey",
+            encoded_key="..."
+        )
+    ]
+)
+```
+
+See:
+
+* https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/PrivateContent.html
+* https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-trusted-signers.html
+
+

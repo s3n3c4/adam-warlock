@@ -1,0 +1,33 @@
+version: "3.8"
+services:
+  web-python:
+    container_name: py-chat
+    ports:
+      - "5000"
+    build: .
+    command: ["gunicorn", "-k", "eventlet", "-w", "1", "-b", "0.0.0.0:5000", "main:app"]
+    deploy:
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+    networks:
+      - netbridge 
+
+
+  nginx:
+    container_name: nginx-py
+    ports:
+      - "80:80"
+    depends_on:
+      - web-python
+    volumes:
+      - ./nginx:/etc/nginx/conf.d/
+    image: "nginx"
+    networks: 
+      - netbridge
+    
+
+networks:
+  netbridge:

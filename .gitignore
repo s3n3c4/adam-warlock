@@ -1,3 +1,5 @@
 ciCd/WithJenkins/php-jenkins-docker/docker
 **/.terraform*
-**/env*
+**/env/
+**/build/
+**/venv/
